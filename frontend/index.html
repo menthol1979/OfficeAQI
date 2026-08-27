@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OfficeLab-Pi5 · Env Dashboard</title>
+<script src="/static/echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0d0f;
+    --panel: #12181a;
+    --panel-border: #1f2b2e;
+    --text: #e7f1ee;
+    --text-dim: #8aa19c;
+    --green: #01A710;
+    --green-glow: rgba(1, 167, 16, 0.35);
+    --orange: #C14B00;
+    --orange-glow: rgba(193, 75, 0, 0.35);
+    --pink: #F87CFC;
+    --pink-glow: rgba(248, 124, 252, 0.35);
+    --blue: #3fb6e0;
+    --blue-glow: rgba(63, 182, 224, 0.35);
+    --yellow: #e0c23f;
+    --yellow-glow: rgba(224, 194, 63, 0.35);
+    --bad: #ff5c5c;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(1,167,16,0.10), transparent 60%),
+      radial-gradient(1000px 500px at 100% 0%, rgba(248,124,252,0.08), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 22px 28px 14px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  header h1 {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  header h1 span {
+    color: var(--green);
+    text-shadow: 0 0 18px var(--green-glow);
+  }
+
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+
+  .dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-right: 6px;
+    background: var(--text-dim);
+    box-shadow: none;
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  .dot.live { background: var(--green); box-shadow: 0 0 10px var(--green-glow); }
+  .dot.stale { background: var(--orange); box-shadow: 0 0 10px var(--orange-glow); }
+  .dot.down { background: var(--bad); box-shadow: 0 0 10px rgba(255,92,92,0.4); }
+
+  .range-picker {
+    display: flex;
+    gap: 6px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 4px;
+  }
+  .range-picker button {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    padding: 6px 12px;
+    border-radius: 7px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .range-picker button:hover { color: var(--text); }
+  .range-picker button.active {
+    background: linear-gradient(135deg, var(--green), #018a0d);
+    color: #06120a;
+    font-weight: 600;
+  }
+
+  main {
+    padding: 6px 28px 40px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 18px;
+    margin-top: 8px;
+  }
+
+  .card {
+    background: linear-gradient(180deg, var(--panel), #0d1213);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 16px 16px 6px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 16px;
+    padding: 1px;
+    background: linear-gradient(135deg, var(--card-accent, var(--green)), transparent 45%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  .card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 0 6px;
+  }
+  .card-head h2 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .card-head .current {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--card-accent, var(--green));
+    text-shadow: 0 0 14px var(--card-glow, var(--green-glow));
+  }
+  .card-head .current .unit {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-dim);
+    text-shadow: none;
+    margin-left: 3px;
+  }
+
+  .chart {
+    width: 100%;
+    height: 240px;
+  }
+
+  .badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    color: var(--text-dim);
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .badge.warn { background: rgba(193,75,0,0.18); color: var(--orange); }
+  .badge.ok { background: rgba(1,167,16,0.18); color: var(--green); }
+
+  details.advanced {
+    margin-top: 26px;
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    background: var(--panel);
+  }
+  details.advanced > summary {
+    cursor: pointer;
+    padding: 14px 18px;
+    font-weight: 600;
+    color: var(--text-dim);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  details.advanced > summary::-webkit-details-marker { display: none; }
+  details.advanced > summary::before {
+    content: "▸";
+    transition: transform 0.15s;
+  }
+  details.advanced[open] > summary::before { transform: rotate(90deg); }
+  details.advanced .grid { padding: 0 16px 16px; }
+
+  footer {
+    padding: 10px 28px 30px;
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>OfficeLab-Pi5 · <span>Env</span> Dashboard</h1>
+  <div class="status-row">
+    <span><span id="conn-dot" class="dot"></span><span id="conn-text">connecting…</span></span>
+    <span id="accuracy-badge"></span>
+    <div class="range-picker" id="range-picker">
+      <button data-range="1h">1h</button>
+      <button data-range="6h">6h</button>
+      <button data-range="24h" class="active">24h</button>
+      <button data-range="7d">7d</button>
+      <button data-range="30d">30d</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="grid" id="primary-grid">
+    <div class="card" style="--card-accent: var(--orange); --card-glow: var(--orange-glow);">
+      <div class="card-head">
+        <h2>Temperature</h2>
+        <div class="current"><span id="cur-temperature_c">–</span><span class="unit">°C</span></div>
+      </div>
+      <div class="chart" id="chart-temperature_c"></div>
+    </div>
+
+    <div class="card" style="--card-accent: var(--blue); --card-glow: var(--blue-glow);">
+      <div class="card-head">
+        <h2>Humidity</h2>
+        <div class="current"><span id="cur-humidity_pct">–</span><span class="unit">%</span></div>
+      </div>
+      <div class="chart" id="chart-humidity_pct"></div>
+    </div>
+
+    <div class="card" style="--card-accent: var(--green); --card-glow: var(--green-glow);">
+      <div class="card-head">
+        <h2>IAQ<span class="badge" id="iaq-accuracy-badge"></span></h2>
+        <div class="current"><span id="cur-iaq">–</span></div>
+      </div>
+      <div class="chart" id="chart-iaq"></div>
+    </div>
+
+    <div class="card" style="--card-accent: var(--pink); --card-glow: var(--pink-glow);">
+      <div class="card-head">
+        <h2>CO₂-equivalent <span class="badge">estimated</span></h2>
+        <div class="current"><span id="cur-co2_equivalent_ppm">–</span><span class="unit">ppm</span></div>
+      </div>
+      <div class="chart" id="chart-co2_equivalent_ppm"></div>
+    </div>
+
+    <div class="card" style="--card-accent: var(--yellow); --card-glow: var(--yellow-glow);">
+      <div class="card-head">
+        <h2>Pressure</h2>
+        <div class="current"><span id="cur-pressure_hpa">–</span><span class="unit">hPa</span></div>
+      </div>
+      <div class="chart" id="chart-pressure_hpa"></div>
+    </div>
+  </div>
+
+  <details class="advanced">
+    <summary>Advanced &amp; sensor-drift view</summary>
+    <div class="grid">
+      <div class="card" style="--card-accent: var(--pink); --card-glow: var(--pink-glow);">
+        <div class="card-head">
+          <h2>Breath VOC-equivalent <span class="badge">estimated</span></h2>
+          <div class="current"><span id="cur-breath_voc_equivalent_ppm">–</span><span class="unit">ppm</span></div>
+        </div>
+        <div class="chart" id="chart-breath_voc_equivalent_ppm"></div>
+      </div>
+
+      <div class="card" style="--card-accent: var(--orange); --card-glow: var(--orange-glow);">
+        <div class="card-head">
+          <h2>Gas Resistance <span class="badge">drift-watch</span></h2>
+          <div class="current"><span id="cur-gas_resistance_ohm">–</span><span class="unit">Ω</span></div>
+        </div>
+        <div class="chart" id="chart-gas_resistance_ohm"></div>
+      </div>
+    </div>
+  </details>
+</main>
+
+<footer>
+  Data source: ESP32/BME680 sensor node, office LAN only. IAQ, CO₂-equivalent and breath VOC-equivalent
+  are BME680-estimated values, not true CO₂/VOC sensor readings. Retained for 30 days.
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  const SERIES = [
+    { key: "temperature_c",            color: "#C14B00" },
+    { key: "humidity_pct",             color: "#3fb6e0" },
+    { key: "iaq",                      color: "#01A710" },
+    { key: "co2_equivalent_ppm",       color: "#F87CFC" },
+    { key: "pressure_hpa",             color: "#e0c23f" },
+    { key: "breath_voc_equivalent_ppm",color: "#F87CFC" },
+    { key: "gas_resistance_ohm",       color: "#C14B00" },
+  ];
+
+  const charts = {};
+  const seriesData = {}; // key -> array of [ts_ms, value]
+
+  function fmtNum(v, digits) {
+    if (v === null || v === undefined || Number.isNaN(v)) return "–";
+    return Number(v).toFixed(digits ?? 1);
+  }
+
+  function makeChart(key, color) {
+    const el = document.getElementById("chart-" + key);
+    if (!el) return null;
+    const chart = echarts.init(el, null, { renderer: "canvas" });
+    const option = {
+      backgroundColor: "transparent",
+      grid: { left: 42, right: 16, top: 12, bottom: 26 },
+      xAxis: {
+        type: "time",
+        axisLine: { lineStyle: { color: "#233033" } },
+        axisLabel: { color: "#8aa19c", fontSize: 10 },
+        splitLine: { show: false },
+      },
+      yAxis: {
+        type: "value",
+        scale: true,
+        axisLine: { show: false },
+        axisLabel: { color: "#8aa19c", fontSize: 10 },
+        splitLine: { lineStyle: { color: "#182224" } },
+      },
+      tooltip: {
+        trigger: "axis",
+        backgroundColor: "#12181a",
+        borderColor: "#233033",
+        textStyle: { color: "#e7f1ee", fontSize: 11 },
+        axisPointer: { lineStyle: { color: color } },
+        valueFormatter: (v) => fmtNum(v, 2),
+      },
+      series: [
+        {
+          type: "line",
+          data: [],
+          showSymbol: false,
+          smooth: 0.25,
+          animationDuration: 400,
+          animationDurationUpdate: 300,
+          lineStyle: { color: color, width: 2.4, shadowColor: color, shadowBlur: 12 },
+          itemStyle: { color: color },
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: color + "55" },
+              { offset: 1, color: color + "00" },
+            ]),
+          },
+        },
+      ],
+    };
+    chart.setOption(option);
+    return chart;
+  }
+
+  function initCharts() {
+    for (const s of SERIES) {
+      charts[s.key] = makeChart(s.key, s.color);
+      seriesData[s.key] = [];
+    }
+    window.addEventListener("resize", () => {
+      for (const k in charts) if (charts[k]) charts[k].resize();
+    });
+  }
+
+  function updateChart(key) {
+    const chart = charts[key];
+    if (!chart) return;
+    chart.setOption({ series: [{ data: seriesData[key] }] });
+  }
+
+  function updateCurrentValue(key, value) {
+    const el = document.getElementById("cur-" + key);
+    if (!el) return;
+    const digits = key === "gas_resistance_ohm" || key === "co2_equivalent_ppm" ? 0 : 1;
+    el.textContent = fmtNum(value, digits);
+  }
+
+  function applyReading(reading, tsMs) {
+    for (const s of SERIES) {
+      const v = reading[s.key];
+      if (v === null || v === undefined) continue;
+      seriesData[s.key].push([tsMs, v]);
+      updateChart(s.key);
+      updateCurrentValue(s.key, v);
+    }
+    updateAccuracyBadge(reading.iaq_accuracy);
+  }
+
+  function updateAccuracyBadge(accuracy) {
+    const el = document.getElementById("iaq-accuracy-badge");
+    const topEl = document.getElementById("accuracy-badge");
+    if (accuracy === null || accuracy === undefined) return;
+    const label = "cal " + accuracy + "/3";
+    const cls = accuracy >= 3 ? "ok" : "warn";
+    if (el) { el.textContent = label; el.className = "badge " + cls; }
+    if (topEl) { topEl.textContent = accuracy >= 3 ? "sensor calibrated" : "sensor calibrating (" + accuracy + "/3)"; }
+  }
+
+  // ---- REST backfill ----
+
+  let currentRange = "24h";
+
+  async function loadHistory(range) {
+    for (const s of SERIES) seriesData[s.key] = [];
+    const res = await fetch("/api/history?range=" + encodeURIComponent(range));
+    if (!res.ok) throw new Error("history fetch failed: " + res.status);
+    const rows = await res.json();
+    for (const row of rows) {
+      const tsMs = Date.parse(row.ts);
+      for (const s of SERIES) {
+        const v = row[s.key];
+        if (v === null || v === undefined) continue;
+        seriesData[s.key].push([tsMs, v]);
+      }
+    }
+    for (const s of SERIES) updateChart(s.key);
+    if (rows.length) {
+      const last = rows[rows.length - 1];
+      for (const s of SERIES) updateCurrentValue(s.key, last[s.key]);
+      updateAccuracyBadge(last.iaq_accuracy);
+    }
+  }
+
+  function setActiveRangeButton(range) {
+    document.querySelectorAll("#range-picker button").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.range === range);
+    });
+  }
+
+  document.getElementById("range-picker").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-range]");
+    if (!btn) return;
+    currentRange = btn.dataset.range;
+    setActiveRangeButton(currentRange);
+    loadHistory(currentRange).catch(console.error);
+  });
+
+  // ---- WebSocket live stream ----
+
+  const dot = document.getElementById("conn-dot");
+  const connText = document.getElementById("conn-text");
+  let staleTimer = null;
+
+  function setConnState(state, label) {
+    dot.className = "dot " + state;
+    connText.textContent = label;
+  }
+
+  function armStaleWatchdog() {
+    if (staleTimer) clearTimeout(staleTimer);
+    staleTimer = setTimeout(() => setConnState("stale", "no new readings"), 90 * 1000);
+  }
+
+  function connectWs() {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(proto + "//" + location.host + "/ws");
+
+    ws.onopen = () => setConnState("live", "live");
+    ws.onclose = () => {
+      setConnState("down", "disconnected — retrying…");
+      setTimeout(connectWs, 3000);
+    };
+    ws.onerror = () => ws.close();
+    ws.onmessage = (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { return; }
+      if (msg.type !== "reading") return;
+      setConnState("live", "live");
+      armStaleWatchdog();
+      // Only append to the live-most-recent window; a live point outside
+      // the currently-viewed historical range would just be discarded by
+      // the chart's own axis range, so it's safe to always append.
+      applyReading(msg, Date.parse(msg.ts));
+    };
+  }
+
+  // ---- boot ----
+
+  initCharts();
+  loadHistory(currentRange).catch((err) => {
+    console.error(err);
+    connText.textContent = "history load failed";
+  });
+  connectWs();
+  armStaleWatchdog();
+})();
+</script>
+
+</body>
+</html>

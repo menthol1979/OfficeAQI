@@ -1,0 +1,22 @@
+services:
+  env-dashboard:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: officelab-env-dashboard
+    restart: unless-stopped
+    ports:
+      # host:container -- TODO confirm 8090 is actually free on Proteus
+      # before deploying (check kiosk, Gatus, Glances, Bambu stats, etc.)
+      - "8090:8090"
+    environment:
+      ESP32_ENV_URL: "http://192.168.64.20/env"
+      POLL_INTERVAL_SECONDS: "15"
+      RETENTION_DAYS: "30"
+      DB_PATH: "/data/env.db"
+      PORT: "8090"
+    volumes:
+      - env-dashboard-data:/data
+
+volumes:
+  env-dashboard-data:
