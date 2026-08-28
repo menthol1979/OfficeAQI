@@ -67,6 +67,29 @@
     color: var(--text-dim);
   }
 
+  .status-panel {
+    margin: 0 28px 18px;
+    padding: 14px 18px;
+    font-weight: 600;
+    color: var(--text-dim);
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .status-panel .dot { margin-right: 0; }
+  .status-panel-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #updated-ago {
+    white-space: nowrap;
+  }
+
   .dot {
     display: inline-block;
     width: 9px;
@@ -241,18 +264,21 @@
 
 <header>
   <h1>OfficeLab-Pi5 · <span>Env</span> Dashboard</h1>
-  <div class="status-row">
-    <span><span id="conn-dot" class="dot"></span><span id="conn-text">connecting…</span></span>
-    <span id="accuracy-badge"></span>
-    <div class="range-picker" id="range-picker">
-      <button data-range="1h">1h</button>
-      <button data-range="6h">6h</button>
-      <button data-range="24h" class="active">24h</button>
-      <button data-range="7d">7d</button>
-      <button data-range="30d">30d</button>
-    </div>
+  <div class="range-picker" id="range-picker">
+    <button data-range="1h">1h</button>
+    <button data-range="6h">6h</button>
+    <button data-range="24h" class="active">24h</button>
+    <button data-range="7d">7d</button>
+    <button data-range="30d">30d</button>
   </div>
 </header>
+
+<div class="status-panel" id="status-panel">
+  <span class="status-panel-left">
+    <span id="conn-dot" class="dot"></span><span id="conn-text">Connecting…</span>
+  </span>
+  <span id="updated-ago"></span>
+</div>
 
 <main>
   <div class="grid-top" id="primary-grid-top">
@@ -431,16 +457,31 @@
       updateCurrentValue(s.key, v);
     }
     updateAccuracyBadge(reading.iaq_accuracy);
+    lastReadingTs = tsMs;
+    updateAgoText();
   }
+
+  // ---- "Updated: X secs ago" ticker ----
+
+  let lastReadingTs = null;
+  const updatedAgoEl = document.getElementById("updated-ago");
+
+  function updateAgoText() {
+    if (!updatedAgoEl || lastReadingTs === null) return;
+    const secs = Math.max(0, Math.round((Date.now() - lastReadingTs) / 1000));
+    updatedAgoEl.textContent = "Updated: " + secs + " secs ago";
+  }
+
+  let latestAccuracy = null;
 
   function updateAccuracyBadge(accuracy) {
     const el = document.getElementById("iaq-accuracy-badge");
-    const topEl = document.getElementById("accuracy-badge");
     if (accuracy === null || accuracy === undefined) return;
     const label = "cal " + accuracy + "/3";
     const cls = accuracy >= 3 ? "ok" : "warn";
     if (el) { el.textContent = label; el.className = "badge " + cls; }
-    if (topEl) { topEl.textContent = accuracy >= 3 ? "sensor calibrated" : "sensor calibrating (" + accuracy + "/3)"; }
+    latestAccuracy = accuracy;
+    renderStatusText();
   }
 
   // ---- REST backfill ----
@@ -469,6 +510,8 @@
         latestUptimeMs = last.uptime_ms;
         renderStatusText();
       }
+      lastReadingTs = Date.parse(last.ts);
+      updateAgoText();
     }
   }
 
@@ -519,12 +562,19 @@
     return pad(hours) + ":" + pad(minutes) + ":" + pad(seconds);
   }
 
+  function calibrationText() {
+    if (latestAccuracy === null || latestAccuracy === undefined) return null;
+    return latestAccuracy >= 3 ? "Sensor Calibrated" : "Sensor Calibrating (" + latestAccuracy + "/3)";
+  }
+
   function renderStatusText() {
     let text = STATE_LABELS[connState] || connState;
     if (esp32Host) {
       text += " · Connected to " + DEVICE_LABEL + " [" + esp32Host + "]";
       const uptime = formatUptime(latestUptimeMs);
-      if (uptime) text += ", Uptime: " + uptime;
+      if (uptime) text += " - Uptime: " + uptime;
+      const cal = calibrationText();
+      if (cal) text += " - " + cal;
     }
     connText.textContent = text;
   }
@@ -588,6 +638,7 @@
   loadEsp32Info();
   connectWs();
   armStaleWatchdog();
+  setInterval(updateAgoText, 1000);
 })();
 </script>
 
