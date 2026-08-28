@@ -118,6 +118,19 @@
     margin-top: 8px;
   }
 
+  .grid-top {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+    gap: 18px;
+  }
+
+  .grid-bottom {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 18px;
+    margin-top: 18px;
+  }
+
   .card {
     background: linear-gradient(180deg, var(--panel), #0d1213);
     border: 1px solid var(--panel-border);
@@ -169,6 +182,14 @@
   .chart {
     width: 100%;
     height: 240px;
+  }
+
+  .chart-lg {
+    height: 320px;
+  }
+
+  .grid-bottom .chart {
+    height: 210px;
   }
 
   .badge {
@@ -234,13 +255,13 @@
 </header>
 
 <main>
-  <div class="grid" id="primary-grid">
+  <div class="grid-top" id="primary-grid-top">
     <div class="card" style="--card-accent: var(--orange); --card-glow: var(--orange-glow);">
       <div class="card-head">
         <h2>Temperature</h2>
         <div class="current"><span id="cur-temperature_c">–</span><span class="unit">°C</span></div>
       </div>
-      <div class="chart" id="chart-temperature_c"></div>
+      <div class="chart chart-lg" id="chart-temperature_c"></div>
     </div>
 
     <div class="card" style="--card-accent: var(--blue); --card-glow: var(--blue-glow);">
@@ -248,9 +269,11 @@
         <h2>Humidity</h2>
         <div class="current"><span id="cur-humidity_pct">–</span><span class="unit">%</span></div>
       </div>
-      <div class="chart" id="chart-humidity_pct"></div>
+      <div class="chart chart-lg" id="chart-humidity_pct"></div>
     </div>
+  </div>
 
+  <div class="grid-bottom" id="primary-grid-bottom">
     <div class="card" style="--card-accent: var(--green); --card-glow: var(--green-glow);">
       <div class="card-head">
         <h2>IAQ<span class="badge" id="iaq-accuracy-badge"></span></h2>
@@ -442,6 +465,10 @@
       const last = rows[rows.length - 1];
       for (const s of SERIES) updateCurrentValue(s.key, last[s.key]);
       updateAccuracyBadge(last.iaq_accuracy);
+      if (last.uptime_ms !== null && last.uptime_ms !== undefined) {
+        latestUptimeMs = last.uptime_ms;
+        renderStatusText();
+      }
     }
   }
 
@@ -465,23 +492,75 @@
   const connText = document.getElementById("conn-text");
   let staleTimer = null;
 
-  function setConnState(state, label) {
+  // Device label + host are shown in the status line once known. The
+  // label isn't in the sensor payload (there's no device-name field),
+  // so it's hardcoded here -- change DEVICE_LABEL if the node gets
+  // renamed or you add more sensor nodes later.
+  const DEVICE_LABEL = "ESP32-D3";
+  let esp32Host = null;
+  let latestUptimeMs = null;
+  let connState = "connecting";
+
+  const STATE_LABELS = {
+    connecting: "connecting…",
+    live: "Live",
+    stale: "No new readings",
+    down: "Disconnected — retrying…",
+  };
+
+  function formatUptime(ms) {
+    if (ms === null || ms === undefined) return null;
+    let totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    totalSeconds -= hours * 3600;
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds - minutes * 60;
+    const pad = (n) => String(n).padStart(2, "0");
+    return pad(hours) + ":" + pad(minutes) + ":" + pad(seconds);
+  }
+
+  function renderStatusText() {
+    let text = STATE_LABELS[connState] || connState;
+    if (esp32Host) {
+      text += " · Connected to " + DEVICE_LABEL + " [" + esp32Host + "]";
+      const uptime = formatUptime(latestUptimeMs);
+      if (uptime) text += ", Uptime: " + uptime;
+    }
+    connText.textContent = text;
+  }
+
+  function setConnState(state) {
+    connState = state;
     dot.className = "dot " + state;
-    connText.textContent = label;
+    renderStatusText();
   }
 
   function armStaleWatchdog() {
     if (staleTimer) clearTimeout(staleTimer);
-    staleTimer = setTimeout(() => setConnState("stale", "no new readings"), 90 * 1000);
+    staleTimer = setTimeout(() => setConnState("stale"), 90 * 1000);
+  }
+
+  async function loadEsp32Info() {
+    try {
+      const res = await fetch("/api/health");
+      if (!res.ok) return;
+      const data = await res.json();
+      const url = data && data.poller && data.poller.esp32_url;
+      if (url) esp32Host = new URL(url).hostname;
+      renderStatusText();
+    } catch {
+      // Non-critical -- the status line just stays without a host until
+      // the next reading or a page refresh.
+    }
   }
 
   function connectWs() {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(proto + "//" + location.host + "/ws");
 
-    ws.onopen = () => setConnState("live", "live");
+    ws.onopen = () => setConnState("live");
     ws.onclose = () => {
-      setConnState("down", "disconnected — retrying…");
+      setConnState("down");
       setTimeout(connectWs, 3000);
     };
     ws.onerror = () => ws.close();
@@ -489,7 +568,8 @@
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
       if (msg.type !== "reading") return;
-      setConnState("live", "live");
+      if (msg.uptime_ms !== null && msg.uptime_ms !== undefined) latestUptimeMs = msg.uptime_ms;
+      setConnState("live");
       armStaleWatchdog();
       // Only append to the live-most-recent window; a live point outside
       // the currently-viewed historical range would just be discarded by
@@ -505,6 +585,7 @@
     console.error(err);
     connText.textContent = "history load failed";
   });
+  loadEsp32Info();
   connectWs();
   armStaleWatchdog();
 })();
