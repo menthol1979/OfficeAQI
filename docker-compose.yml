@@ -6,9 +6,10 @@ services:
     container_name: officelab-env-dashboard
     restart: unless-stopped
     ports:
-      # host:container -- TODO confirm 8090 is actually free on Proteus
-      # before deploying (check kiosk, Gatus, Glances, Bambu stats, etc.)
-      - "8090:8090"
+      # host:container -- 8090/8091 were already taken on Proteus
+      # (confirmed via `ss -tlnp`), so the app is exposed on 8095 instead.
+      # The container still listens on 8090 internally (see PORT below).
+      - "8095:8090"
     environment:
       ESP32_ENV_URL: "http://192.168.64.20/env"
       POLL_INTERVAL_SECONDS: "15"

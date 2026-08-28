@@ -61,7 +61,7 @@ All config is via environment variables (see `.env.example`):
 | `POLL_INTERVAL_SECONDS` | `15` | Trend app, not live display — slower than the kiosk's own poll rate. |
 | `DB_PATH` | `./data/env.db` (Docker: `/data/env.db`) | SQLite file; point at the mounted volume in prod. |
 | `RETENTION_DAYS` | `30` | Rolling window; prune job runs once a day. |
-| `PORT` | `8090` | **TODO: verify this is actually free on Proteus** before deploying — check what's already listening there (kiosk, Gatus, Glances, Bambu stats, etc.). This was picked as a placeholder, not confirmed against the real host. |
+| `PORT` | `8090` | Uvicorn's listen port *inside* the container. Left at 8090 — the host-side port is what actually needed to change (see below). |
 
 ## Running locally (dev)
 
@@ -91,38 +91,40 @@ docker compose up -d --build
 ```
 
 This builds the single container, mounts a named volume for the SQLite
-DB, and exposes port `8090` (confirm/change first — see TODO above).
+DB, and exposes the app on host port **8095** (`ports: "8095:8090"` in
+`docker-compose.yml`). 8090 and 8091 were already taken on Proteus by
+other services (confirmed via `ss -tlnp`), so 8095 was picked instead —
+the container still listens on 8090 *internally*, only the host-side
+mapping changed. Adjust the left side of that mapping if 8095 ever
+collides with something else.
 
-> **Note:** the Docker build/run path has **not** been verified in the
-> environment this project was scaffolded in (no Docker daemon
-> available there). The FastAPI app itself *was* tested end-to-end
-> (poller → SQLite → REST → WebSocket, including a simulated sensor
-> outage to confirm fail-clean behavior) against a mock sensor. Do a
-> `docker compose up --build` smoke test on Proteus (or any dev machine
-> with Docker) before treating this as deploy-ready.
+## Status: deployed and running
 
-## What's been verified vs. what hasn't
+This has moved past scaffolding — it's live on Proteus, polling the
+real ESP32 successfully:
 
-Verified locally (see commit history / this handoff):
-- Poller writes readings to SQLite on a working sensor.
-- `GET /api/health` and `GET /api/history` return correct data.
-- WebSocket `/ws` broadcasts live readings to connected clients.
-- Fail-clean behavior: killed the mock sensor mid-run — poller logged
-  failures, `consecutive_failures` climbed, **no bad rows were written**,
-  and the app kept serving the last-known reading without crashing.
-- Static frontend and bundled `echarts.min.js` are served correctly.
+- Running in Docker on Proteus at `http://<proteus-ip>:8095`, built via
+  `docker compose up -d --build`.
+- Poller confirmed hitting the real ESP32 at `192.168.64.20/env`,
+  `GET /api/health` showing `consecutive_failures: 0` against live
+  hardware (not just the mock sensor used during initial development).
+- Fail-clean behavior verified: killing the sensor mid-run causes the
+  poller to log failures and climb `consecutive_failures` without
+  writing bad rows or crashing, and it recovers cleanly once the sensor
+  comes back.
+- Frontend visually reviewed (screenshotted, not just reasoned about):
+  temperature/humidity enlarged on top, IAQ/CO2/pressure on the bottom
+  row, plus a status panel below the header showing live connection
+  state, ESP32 host, uptime, calibration status, and a ticking
+  "Updated: X secs ago".
 
-Not yet verified (needs the real environment):
-- Docker image build/run (no Docker daemon in the scaffolding sandbox).
-- Behavior against the *real* ESP32 at `192.168.64.20` (only tested
-  against a mock — confirm the IP/response shape still matches).
-- Actual visual review of the charts in a browser (built and reasoned
-  about, but not screenshotted/eyeballed).
-- Port collision check on Proteus.
+Still open:
+- Import this stack into Portainer (Stacks → Add stack → Repository →
+  this repo's URL) so it's managed alongside whatever else runs there.
 
 ## Repo
 
-Suggested name (matching the `OfficeLab-Pi5-ESP32-Sensor` convention):
-`menthol1979/OfficeLab-Pi5-Env-Dashboard`. This project was scaffolded
-with a local git repo (`git init`) but has **not** been pushed anywhere —
-create the GitHub repo and push when ready.
+Pushed to [`menthol1979/OfficeAQI`](https://github.com/menthol1979/OfficeAQI)
+(this project is the repo root, not a subfolder — the suggested
+`OfficeLab-Pi5-Env-Dashboard` naming ended up as the repo's local
+directory name on each machine, not the GitHub repo name itself).
